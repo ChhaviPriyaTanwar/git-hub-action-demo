@@ -3,67 +3,76 @@ const mysql = require('mysql2/promise');
 const app = express();
 const port = 3000;
 
-// Middleware to parse JSON bodies
 app.use(express.json());
 
 // MySQL connection configuration
 const dbConfig = {
   host: process.env.DB_HOST || 'mysql',
   user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'mydb',
-  port: process.env.DB_PORT || 3306
+  password: process.env.DB_PASSWORD || 'password',
+  database: process.env.DB_NAME || 'mydb'
 };
 
-// Existing GET endpoint
-app.get('/api', (req, res) => {
-  res.json({
-    message: 'Hello from Node.js API!',
-    timestamp: new Date().toISOString()
-  });
-});
-
-// New POST endpoint to add data
-app.post('/api/add', async (req, res) => {
-  try {
-    const { name, value } = req.body;
-    
-    if (!name || !value) {
-      return res.status(400).json({ error: 'Name and value are required' });
-    }
-
-    const connection = await mysql.createConnection(dbConfig);
-    await connection.execute(
-      'INSERT INTO items (name, value) VALUES (?, ?)',
-      [name, value]
-    );
-    await connection.end();
-
-    res.status(201).json({ message: 'Item added successfully', name, value });
-  } catch (error) {
-    console.error('Error:', error);
-    res.status(500).json({ error: 'Database error' });
-  }
-});
-
-// Initialize database
+// Initialize database and table
 async function initializeDatabase() {
-  const connection = await mysql.createConnection(dbConfig);
-  await connection.execute(`
-    CREATE TABLE IF NOT EXISTS items (
+  const connection = await mysql.createConnection({
+    ...dbConfig,
+    database: undefined // Connect without selecting database first
+  });
+  
+  await connection.query('CREATE DATABASE IF NOT EXISTS mydb');
+  await connection.query('USE mydb');
+  await connection.query(`
+    CREATE TABLE IF NOT EXISTS users (
       id INT AUTO_INCREMENT PRIMARY KEY,
       name VARCHAR(255) NOT NULL,
-      value VARCHAR(255) NOT NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      email VARCHAR(255) NOT NULL UNIQUE
     )
   `);
   await connection.end();
 }
 
-app.listen(port, () => {
-  console.log(`Server running at http://localhost:${port}`);
-  initializeDatabase().catch(console.error);
+// GET endpoint - fetch all users
+app.get('/api/users', async (req, res) => {
+  try {
+    const connection = await mysql.createConnection(dbConfig);
+    const [rows] = await connection.query('SELECT * FROM users');
+    await connection.end();
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
+
+// POST endpoint - add a new user
+app.post('/api/users', async (req, res) => {
+  const { name, email } = req.body;
+  if (!name || !email) {
+    return res.status(400).json({ error: 'Name and email are required' });
+  }
+
+  try {
+    const connection = await mysql.createConnection(dbConfig);
+    const [result] = await connection.query(
+      'INSERT INTO users (name, email) VALUES (?, ?)',
+      [name, email]
+    );
+    await connection.end();
+    res.status(201).json({ id: result.insertId, name, email });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Start server
+async function startServer() {
+  await initializeDatabase();
+  app.listen(port, () => {
+    console.log(`Server running at http://localhost:${port}`);
+  });
+}
+
+startServer();
 
 
 
