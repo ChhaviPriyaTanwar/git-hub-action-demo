@@ -80,18 +80,11 @@ jobs:
           echo "DB_NAME=mydb" >> .env
           echo "PORT=3000" >> .env
 
-      - name: Wait for MySQL to be ready
-        run: |
-          until mysqladmin ping -h localhost -u root -proot --silent; do
-            echo "Waiting for MySQL..."
-            sleep 2
-          done
-
       - name: Start app and test
         run: |
           npm start &
-          sleep 10 # Give the server more time to start and initialize DB
-          curl --fail http://localhost:3000/api/users || (echo "Server logs:" && cat *.log && exit 1)
+          sleep 5 # Wait for server to start
+          curl --fail http://localhost:3000/api/users
 
   build-and-push:
     needs: test
